@@ -1,8 +1,8 @@
-=============================================
-Generative Moment Matching Imitation Learning
-=============================================
+
+# Generative Moment Matching Imitation Learning
+
 ---------------------------------------------
-Kee-Eung Kim and Hyun Soo Park
+## Kee-Eung Kim and Hyun Soo Park
 ---------------------------------------------
 
 The implementation is based on [Jonathan Ho's GAIL (Generative Adversarial Imitation Learning) code](https://github.com/openai/imitation).
