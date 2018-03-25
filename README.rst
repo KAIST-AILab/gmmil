@@ -1,14 +1,16 @@
-=========================================
-Generative Adversarial Imitation Learning
-=========================================
------------------------------------------
-Jonathan Ho and Stefano Ermon
------------------------------------------
+=============================================
+Generative Moment Matching Imitation Learning
+=============================================
+---------------------------------------------
+Kee-Eung Kim and Hyun Soo Park
+---------------------------------------------
 
-Contains an implementation of Trust Region Policy Optimization (Schulman et al., 2015).
+The implementation is based on [Jonathan Ho's GAIL (Generative Adversarial Imitation Learning) code](https://github.com/openai/imitation).
+Contains an implementation of Trust Region Policy Optimization (Schulman et al., 2015) and Genertaive Adversarial Imitation Learning (Jonathan et al., 2016).
 
 Dependencies:
 
+* Python 2.7
 * OpenAI Gym >= 0.1.0, mujoco_py >= 0.4.0
 * numpy >= 1.10.4, scipy >= 0.17.0, theano >= 0.8.2
 * h5py, pytables, pandas, matplotlib
