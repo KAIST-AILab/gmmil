@@ -4,6 +4,7 @@
 ## Kee-Eung Kim and Hyun Soo Park
 
 The implementation is based on [Jonathan Ho's GAIL (Generative Adversarial Imitation Learning) code](https://github.com/openai/imitation).
+
 Contains an implementation of Trust Region Policy Optimization (Schulman et al., 2015) and Genertaive Adversarial Imitation Learning (Jonathan et al., 2016).
 
 Dependencies:
