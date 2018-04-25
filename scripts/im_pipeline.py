@@ -377,8 +377,7 @@ def main():
     np.set_printoptions(suppress=True, precision=5, linewidth=1000)
 
     phases = {
-        '0_sampletrajs': phase0_sampletrajs,ls
-
+        '0_sampletrajs': phase0_sampletrajs,
         '1_train': phase1_train,
         '2_eval': phase2_eval,
     }
