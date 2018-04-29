@@ -2,10 +2,11 @@ import argparse, h5py, json
 import numpy as np
 from environments import rlgymenv
 import policyopt
-from policyopt import imitation, nn, rl, util
+from policyopt import imitation, nn, rl, util, gmmil
 
 
-MODES = ('bclone', 'ga')
+MODES = ('bclone', 'ga', 'gmmil')
+
 OBSNORM_MODES = ('none', 'expertdata', 'online')
 TINY_ARCHITECTURE = '[{"type": "fc", "n": 64}, {"type": "nonlin", "func": "tanh"}, {"type": "fc", "n": 64}, {"type": "nonlin", "func": "tanh"}]'
 SIMPLE_ARCHITECTURE = '[{"type": "fc", "n": 100}, {"type": "nonlin", "func": "tanh"}, {"type": "fc", "n": 100}, {"type": "nonlin", "func": "tanh"}]'
@@ -175,6 +176,50 @@ def main():
                 varscope_name='TransitionClassifier')
         elif args.reward_type in ['l2ball', 'simplex']:
             reward = imitation.LinearReward(
+                obsfeat_space=mdp.obs_space,
+                action_space=mdp.action_space,
+                mode=args.reward_type,
+                enable_inputnorm=True,
+                favor_zero_expert_reward=bool(args.favor_zero_expert_reward),
+                include_time=bool(args.reward_include_time),
+                time_scale=1./mdp.env_spec.timestep_limit,
+                exobs_Bex_Do=exobs_Bstacked_Do,
+                exa_Bex_Da=exa_Bstacked_Da,
+                ext_Bex=ext_Bstacked)
+        else:
+            raise NotImplementedError(args.reward_type)
+
+        vf = None if bool(args.no_vf) else rl.ValueFunc(
+            hidden_spec=args.policy_hidden_spec,
+            obsfeat_space=mdp.obs_space,
+            enable_obsnorm=args.obsnorm_mode != 'none',
+            enable_vnorm=True,
+            max_kl=args.vf_max_kl,
+            damping=args.vf_cg_damping,
+            time_scale=1./mdp.env_spec.timestep_limit,
+            varscope_name='ValueFunc')
+
+        opt = imitation.ImitationOptimizer(
+            mdp=mdp,
+            discount=args.discount,
+            lam=args.lam,
+            policy=policy,
+            sim_cfg=policyopt.SimConfig(
+                min_num_trajs=-1, min_total_sa=args.min_total_sa,
+                batch_size=args.sim_batch_size, max_traj_len=max_traj_len),
+            step_func=rl.TRPO(max_kl=args.policy_max_kl, damping=args.policy_cg_damping),
+            reward_func=reward,
+            value_func=vf,
+            policy_obsfeat_fn=lambda obs: obs,
+            reward_obsfeat_fn=lambda obs: obs,
+            policy_ent_reg=args.policy_ent_reg,
+            ex_obs=exobs_Bstacked_Do,
+            ex_a=exa_Bstacked_Da,
+            ex_t=ext_Bstacked)
+
+    elif args.mode == 'gmmil':
+        if args.reward_type == 'mmd':
+            reward = gmmil.MMDReward(
                 obsfeat_space=mdp.obs_space,
                 action_space=mdp.action_space,
                 mode=args.reward_type,
