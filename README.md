@@ -1,5 +1,5 @@
 
-# Generative Moment Matching Imitation Learning
+# Imitation Learning via Kernel Mean Embedding
 
 ## Kee-Eung Kim and Hyun Soo Park
 This code is used for the paper [Imitation Learning via Kernel Mean Embedding](http://ailab.kaist.ac.kr/papers/KP2018).
