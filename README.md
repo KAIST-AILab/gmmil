@@ -2,7 +2,8 @@
 # Generative Moment Matching Imitation Learning
 
 ## Kee-Eung Kim and Hyun Soo Park
-This code is used for the paper [Imitation Learning via Kernel Mean Embedding](http://ailab.kaist.ac.kr/papers/KP2018)
+This code is used for the paper [Imitation Learning via Kernel Mean Embedding](http://ailab.kaist.ac.kr/papers/KP2018).
+
 The implementation is based on [Jonathan Ho's GAIL (Generative Adversarial Imitation Learning) code](https://github.com/openai/imitation).
 
 Contains an implementation of Trust Region Policy Optimization (Schulman et al., 2015) and Generative Adversarial Imitation Learning (Jonathan et al., 2016).
