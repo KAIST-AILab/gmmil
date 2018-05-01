@@ -1,4 +1,4 @@
- . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, thutil
+from . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, thutil
 import numpy as np
 from contextlib import contextmanager
 import theano; from theano import tensor
@@ -6,31 +6,37 @@ import theano; from theano import tensor
 from scipy.optimize import fmin_l_bfgs_b
 
 class MMDReward(object):
-    # things to keep in mind
-    # - continuous vs discrete actions
-    # - input norm
-    # - shifting so that 0 == expert or 0 == non-expert
     # This is just copy version of LinearReward
-    # TODO : reward function equals to MMD witness function!!
+    # TODO-LIST : reward function equals to MMD witness function!!
+    # Consider only Gaussian Kernel first
+    # TODO-0 : Start from the Linear Kernel!
+    # TODO-1 : Where we apply the median heuristic to determine bandwidth parameters?
+    # TODO-2 : How can we implement Gaussian Kernel function?
 
     def __init__(self,
             obsfeat_space, action_space,
-            mode, enable_inputnorm, favor_zero_expert_reward,
+            #mode,
+                 #  In LinearReward : l2ball, simplex
+                 #  In this case, we consider only MMDReward
+            enable_inputnorm, favor_zero_expert_reward,
             include_time,
             time_scale,
             exobs_Bex_Do, exa_Bex_Da, ext_Bex,
-            sqscale=.01,
-            quadratic_features=False):
+            # sqscale=.01,
+            # quadratic_features=False
+            kernel_bandwidth_params,
+            kernel_batchsize
+            ):
 
         self.obsfeat_space, self.action_space = obsfeat_space, action_space
-        assert mode in ['l2ball', 'simplex']
-        print 'Linear reward function type: {}'.format(mode)
-        self.simplex = mode == 'simplex'
+        #assert mode in ['l2ball', 'simplex']
+        #print 'Linear reward function type: {}'.format(mode)
+        #self.simplex = mode == 'simplex'
         self.favor_zero_expert_reward = favor_zero_expert_reward
         self.include_time = include_time
         self.time_scale = time_scale
-        self.sqscale = sqscale
-        self.quadratic_features = quadratic_features
+        #self.sqscale = sqscale
+        #self.quadratic_features = quadratic_features
         self.exobs_Bex_Do, self.exa_Bex_Da, self.ext_Bex = exobs_Bex_Do, exa_Bex_Da, ext_Bex
         with nn.variable_scope('inputnorm'):
             # Standardize both observations and actions if actions are continuous
@@ -44,17 +50,20 @@ class MMDReward(object):
         # Expert feature expectations
         self.expert_feat_Df = self._compute_featexp(self.exobs_Bex_Do, self.exa_Bex_Da, self.ext_Bex)
         # The current reward function
-        feat_dim = self.expert_feat_Df.shape[0]
-        print 'Linear reward: {} features'.format(feat_dim)
-        if self.simplex:
-            # widx is the index of the most discriminative reward function
-            self.widx = np.random.randint(feat_dim)
-        else:
-            # w is a weight vector
-            self.w = np.random.randn(feat_dim)
-            self.w /= np.linalg.norm(self.w) + 1e-8
-
+        # feat_dim = self.expert_feat_Df.shape[0]
+        #print 'Linear reward: {} features'.format(feat_dim)
+        #if self.simplex:
+        #    # widx is the index of the most discriminative reward function
+        #    self.widx = np.random.randint(feat_dim)
+        #else:
+        # w is a weight vector ; FEM uses weights
+        # self.w = np.random.randn(feat_dim)
+        # self.w /= np.linalg.norm(self.w) + 1e-8
         self.reward_bound = 0.
+
+        # Arguments for MMD Reward
+        self.kernel_bandwidth_params = kernel_bandwidth_params,
+        self.kernel_batchsize = kernel_batchsize
 
     def _featurize(self, obsfeat_B_Do, a_B_Da, t_B):
         assert self.inputnorm_updated
@@ -121,24 +130,19 @@ class MMDReward(object):
 
     def fit(self, obsfeat_B_Do, a_B_Da, t_B, _unused_exobs_Bex_Do, _unused_exa_Bex_Da, _unused_ext_Bex):
         # Ignore expert data inputs here, we'll use the one provided in the constructor.
-
         # Current feature expectations
         curr_feat_Df = self._compute_featexp(obsfeat_B_Do, a_B_Da, t_B)
 
         # Compute adversary reward
-        if self.simplex:
-            v = curr_feat_Df - self.expert_feat_Df
-            self.widx = np.argmin(v)
-            return [('vmin', v.min(), float)]
-        else:
-            self.w = self.expert_feat_Df - curr_feat_Df
-            l2 = np.linalg.norm(self.w)
-            self.w /= l2 + 1e-8
-            return [('l2', l2, float)]
+        self.w = self.expert_feat_Df - curr_feat_Df
+        l2 = np.linalg.norm(self.w)
+        self.w /= l2 + 1e-8
+        return [('l2', l2, float)]
+        #TODO: Is there anything we have to 'fit' with MMD Reward?
 
     def compute_reward(self, obsfeat_B_Do, a_B_Da, t_B):
         feat_B_Df = self._featurize(obsfeat_B_Do, a_B_Da, t_B)
-        r_B = (feat_B_Df[:,self.widx] if self.simplex else feat_B_Df.dot(self.w)) / float(feat_B_Df.shape[1])
+        r_B = ( feat_B_Df.dot(self.w)) / float(feat_B_Df.shape[1] )
         assert r_B.shape == (obsfeat_B_Do.shape[0],)
 
         if self.favor_zero_expert_reward:
