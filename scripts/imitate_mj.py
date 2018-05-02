@@ -12,7 +12,7 @@ TINY_ARCHITECTURE = '[{"type": "fc", "n": 64}, {"type": "nonlin", "func": "tanh"
 SIMPLE_ARCHITECTURE = '[{"type": "fc", "n": 100}, {"type": "nonlin", "func": "tanh"}, {"type": "fc", "n": 100}, {"type": "nonlin", "func": "tanh"}]'
 
 
-def load_dataset(filename, limit_trajs, data_subsamp_freq):
+def load_dataset(filename, limit_trajs, data_subsamp_freq, seed):
     # Load expert data
     with h5py.File(filename, 'r') as f:
         # Read data as written by vis_mj.py
@@ -28,7 +28,7 @@ def load_dataset(filename, limit_trajs, data_subsamp_freq):
     print 'Expert average return:', exr_B_T.sum(axis=1).mean()
 
     # Stack everything together
-    start_times_B = np.random.RandomState(0).randint(0, data_subsamp_freq, size=exlen_B.shape[0])
+    start_times_B = np.random.RandomState(seed).randint(0, data_subsamp_freq, size=exlen_B.shape[0])
     print 'start times'
     print start_times_B
     exobs_Bstacked_Do = np.concatenate(
@@ -53,7 +53,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=MODES, required=True)
-    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--seed', type=int, default=0)
     # Expert dataset
     parser.add_argument('--data', type=str, required=True)
     parser.add_argument('--limit_trajs', type=int, required=True)
@@ -92,6 +92,11 @@ def main():
     parser.add_argument('--sim_batch_size', type=int, default=None)
     parser.add_argument('--min_total_sa', type=int, default=50000)
     parser.add_argument('--favor_zero_expert_reward', type=int, default=0)
+    # Generative Moment matching
+    parser.add_argument('--kernel_batchsize', type=int, default=1000)
+    parser.add_argument('--use_median_heuristic', type=int, default=0)
+    #parser.add_argument('--use_auto_encoder', type=bool, default=False)
+    # Auto-Encoder Information
     # Saving stuff
     parser.add_argument('--print_freq', type=int, default=1)
     parser.add_argument('--save_freq', type=int, default=20)
@@ -132,7 +137,7 @@ def main():
 
     # Load expert data
     exobs_Bstacked_Do, exa_Bstacked_Da, ext_Bstacked = load_dataset(
-        args.data, args.limit_trajs, args.data_subsamp_freq)
+        args.data, args.limit_trajs, args.data_subsamp_freq, args.seed)
     assert exobs_Bstacked_Do.shape[1] == mdp.obs_space.storage_size
     assert exa_Bstacked_Da.shape[1] == mdp.action_space.storage_size
     assert ext_Bstacked.ndim == 1
@@ -218,18 +223,27 @@ def main():
             ex_t=ext_Bstacked)
 
     elif args.mode == 'gmmil':
+        # TODO: Implement Median Heuristic Here
+        if not bool(args.use_median_heuristic):
+            bandwidth_params = [1.0, 1.0/2.0, 1.0/5.0, 1.0/10.0, 1.0/40.0, 1.0/80.0]
+        else:
+            bandwidth_params = []
+
         if args.reward_type == 'mmd':
             reward = gmmil.MMDReward(
                 obsfeat_space=mdp.obs_space,
                 action_space=mdp.action_space,
-                mode=args.reward_type,
                 enable_inputnorm=True,
                 favor_zero_expert_reward=bool(args.favor_zero_expert_reward),
                 include_time=bool(args.reward_include_time),
                 time_scale=1./mdp.env_spec.timestep_limit,
                 exobs_Bex_Do=exobs_Bstacked_Do,
                 exa_Bex_Da=exa_Bstacked_Da,
-                ext_Bex=ext_Bstacked)
+                ext_Bex=ext_Bstacked,
+                kernel_bandwidth_params=bandwidth_params,
+                kernel_batchsize=args.kernel_batchsize,
+                use_median_heuristic=bool(args.use_median_heuristic)
+            )
         else:
             raise NotImplementedError(args.reward_type)
 

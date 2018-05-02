@@ -218,10 +218,17 @@ def phase0_sampletrajs(spec, specfilename):
                 f.create_dataset(dsetname, data=a, compression='gzip', compression_opts=9)
             # Right-padded trajectory data
             write('obs_B_T_Do', trajbatch.obs.padded(fill=0.))
+            #print('obs_B_T_Do', trajbatch.obs.padded(fill=0.))
+            #print('shape :', trajbatch.obs.padded(fill=0.).shape )
             write('a_B_T_Da', trajbatch.a.padded(fill=0.))
+            #print('a_B_T_Da', trajbatch.a.padded(fill=0.))
+            #print('shape : ', trajbatch.a.padded(fill=0.).shape)
             write('r_B_T', trajbatch.r.padded(fill=0.))
+            #print('r_B_T', trajbatch.r.padded(fill=0.))
+            #print('shape : ', trajbatch.r.padded(fill=0.).shape)
             # Trajectory lengths
             write('len_B', np.array([len(traj) for traj in trajbatch], dtype=np.int32))
+            #print('len_B', np.array([len(traj) for traj in trajbatch], dtype=np.int32))
             # # Also save args to this script
             # argstr = json.dumps(vars(args), separators=(',', ':'), indent=2)
             # f.attrs['args'] = argstr
