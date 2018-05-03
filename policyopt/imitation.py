@@ -1,4 +1,4 @@
-from . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, thutil
+from . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, thutil, gmmil
 import numpy as np
 from contextlib import contextmanager
 import theano; from theano import tensor
@@ -505,9 +505,14 @@ class ImitationOptimizer(object):
                     # qnew = qvals
 
                     # TODO: this should be a byproduct of reward fitting
-                    rnew = RaggedArray(
-                        self.reward_func.compute_reward(samp_robsfeat_stacked, sampbatch.a.stacked, sampbatch.time.stacked),
-                        lengths=sampbatch.r.lengths)
+
+                    if isinstance(self.reward_func, gmmil.MMDReward):
+                        rnew = RaggedArray(self.reward_func.current_reward, lengths=sampbatch.r.lengths)
+                    else:
+                        rnew = RaggedArray(
+                            self.reward_func.compute_reward(samp_robsfeat_stacked, sampbatch.a.stacked, sampbatch.time.stacked),
+                            lengths=sampbatch.r.lengths)
+
                     qnew, _ = rl.compute_qvals(rnew, self.discount)
                     vfit_print = self.value_func.fit(samp_pobsfeat.stacked, sampbatch.time.stacked, qnew.stacked)
                 else:
