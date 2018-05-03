@@ -59,21 +59,23 @@ class MMDReward(object):
         # TODO: Implement current reward function here
         # Radial Basis Function Kernel : k(x,y) = \sum exp(- sigma(i) * ||x-y||^2 )
         # Bandwidth parameters = sigmas
-        x = T.matrix('x')
+        x = T.matrix('x') # matrix concatenate x,y
         y = T.matrix('y')
+        #xy = T.concatenate((x, y), axis=1)
         sigmas = T.vector('sigmas')
 
         # dist = ||x-y||^2
-        dist = (x**2).sum(1).reshape((x.shape[0], 1)) - 2*x.dot(y.T) + (y**2).sum(1).reshape((1,y.shape[0]))
+        dist = (x**2).sum(1).reshape((x.shape[0], 1)) -2*x.dot(y.T) + (y**2).sum(1).reshape((1, y.shape[0]))
         dist = T.clip(dist, 1e-10, 1e20)
         rbf_kernel, _ = theano.scan(fn=lambda sigma, distance: T.exp(-sigma*distance),
                                     outputs_info=None,
                                     sequences=sigmas, non_sequences=dist)
+
         rbf_kernel_mean = rbf_kernel.mean(axis=0).mean(axis=0)
-        rbf_kernel_mean_sum = rbf_kernel.mean(axis=0).mean(axis=0).sum(axis=0)
+        rbf_kernel_mean_batchsum = rbf_kernel.mean(axis=0).mean(axis=0).sum()
 
         self.kernel_function = theano.function([x, y, sigmas],
-                                               [rbf_kernel_mean, rbf_kernel_mean_sum],
+                                               [rbf_kernel_mean, rbf_kernel_mean_batchsum],
                                                allow_input_downcast=True)
 
         # Evaluate k( expert, expert )
@@ -149,7 +151,7 @@ class MMDReward(object):
         #l2 = np.linalg.norm(self.w)
         #self.w /= l2 + 1e-8
         #return [('l2', l2, float)]
-        return [('MMD',self.mmd_square, float)]
+        return [('MMD^2*1000',self.mmd_square*1000, float)]
 
 
     def compute_reward(self, obsfeat_B_Do, a_B_Da, t_B):
@@ -157,53 +159,67 @@ class MMDReward(object):
         feat_B_Df = self._featurize(obsfeat_B_Do, a_B_Da, t_B)
         # Note thant features from expert trajectory : self.expert_feat_B_Df
         cost_B = np.zeros(feat_B_Df.shape[0])
-        N = feat_B_Df.shape[0]
-        M = self.expert_feat_B_Df.shape[0]
 
-        print "feat_B_Df.shape :", feat_B_Df.shape
-        print "expert_feat_B_Df.shape :", self.expert_feat_B_Df.shape
+
+        #print "feat_B_Df.shape :", feat_B_Df.shape
+        #print "expert_feat_B_Df.shape :", self.expert_feat_B_Df.shape
 
         if self.use_median_heuristic:
             pass
 
+        N = feat_B_Df.shape[0]
+        M = self.expert_feat_B_Df.shape[0]
+
         kernel_learned_total = 0
         kernel_expert_total = 0
+
+        #batchsize = min(self.kernel_batchsize, M)
         batchsize = self.kernel_batchsize
 
-        print len(t_B)
+        total_index = range(len(t_B))
+        start_index = [index for index in total_index[0:len(t_B):batchsize]]
+        end_index = [index for index in total_index[batchsize:len(t_B):batchsize]]
+        end_index.append(len(t_B))
+        indices_list = [range(start,end) for (start, end) in zip(start_index, end_index)]
 
-        for i in range(len(t_B) // batchsize):
-            indices = range(i*batchsize, (i+1)*batchsize)
+        #batch_iter = len(t_B) // batchsize
+
+        print N
+
+        #for i range(batch_iter):
+        for indices in indices_list:
+            #indices = range(i*batchsize, (i+1)*batchsize)
             kernel_learned, kernel_learned_sum = \
                 self.kernel_function(feat_B_Df,
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
             kernel_learned_total += kernel_learned_sum
-            print("kernel_learned.shape : ", kernel_learned.shape)
-            print("N : ", N)
 
             kernel_expert, kernel_expert_sum = \
                 self.kernel_function(self.expert_feat_B_Df,
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
             kernel_expert_total += kernel_expert_sum
-            print("kernel_expert.shape : ", kernel_expert.shape)
-            print("M : ", M)
 
             # Cost function = Unnormalized Witness Function
-            cost_B[indices] = kernel_learned / N - kernel_expert / M
+            cost_B[indices] = kernel_learned - kernel_expert
+
 
         print "kernel_learned_total :", kernel_learned_total
         print "kernel_expert_total :", kernel_expert_total
         print "kernel_exex_total : ", self.kernel_exex_total
 
-        self.mmd_square = kernel_learned_total / (N**2) - kernel_expert_total / (N*M) + self.kernel_exex_total / (M**2)
+        self.mmd_square = kernel_learned_total/N - 2.* kernel_expert_total / N + self.kernel_exex_total / M
+
         print "mmd_square : ", self.mmd_square
         print "mmd : ", np.sqrt(self.mmd_square)
 
+        if self.mmd_square > 0:
+            cost_B /= np.sqrt(self.mmd_square)
+
         r_B = -cost_B
         print("Average r_B: ", np.array(map(lambda x: x**2, r_B)).mean(axis=0))
-            #r_B = ( feat_B_Df.dot(self.w)) / float(feat_B_Df.shape[1] )
+        #r_B = ( feat_B_Df.dot(self.w)) / float(feat_B_Df.shape[1] )
         #assert r_B.shape == (obsfeat_B_Do.shape[0],)
 
         if self.favor_zero_expert_reward:

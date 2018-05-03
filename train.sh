@@ -1,14 +1,14 @@
 python scripts/imitate_mj.py --mode gmmil \
-  --seed 0 \
+  --seed 1 \
   --reward_type mmd \
   --env Walker2d-v1 \
   --data imitation_runs/modern_stochastic/trajs/trajs_walker.h5 \
-  --limit_trajs 18 \
+  --limit_trajs 20 \
   --data_subsamp_freq 20 \
   --favor_zero_expert_reward 0 \
-  --min_total_sa 50000 \
+  --min_total_sa 20000 \
   --sim_batch_size 1 \
   --kernel_batchsize 250 \
   --max_iter 1001 \
   --reward_include_time 0 \
-  --log output/gmmil-walker.h5 \
+  --log outputs/gmmil-walker.h5 \
