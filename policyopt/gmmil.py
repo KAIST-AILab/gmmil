@@ -9,11 +9,10 @@ from scipy.optimize import fmin_l_bfgs_b
 
 class MMDReward(object):
     # This is just copy version of LinearReward
-    # TODO-LIST : reward function equals to MMD witness function!!
+    # TODO-LIST : cost function equals to MMD witness function!!
     # Consider only Gaussian Kernel first
-    # TODO-0 : Start from the Linear Kernel!
     # TODO-1 : Where we apply the median heuristic to determine bandwidth parameters?
-    # TODO-2 : How can we implement Gaussian Kernel function?
+    # TODO-2 : How can we implement Radial Basis Kernel function?
 
     def __init__(self,
             obsfeat_space, action_space,
