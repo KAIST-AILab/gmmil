@@ -57,13 +57,13 @@ class MMDReward(object):
 
         # The current reward function
         # TODO: Implement current reward function here
-        # Radial Basis Function Kernel : \sum exp(- sigma(i) * ||x-y||^2 )
+        # Radial Basis Function Kernel : k(x,y) = \sum exp(- sigma(i) * ||x-y||^2 )
         # Bandwidth parameters = sigmas
         x = T.matrix('x')
         y = T.matrix('y')
         sigmas = T.vector('sigmas')
 
-        #dist = ((x-y)**2).sum(1).reshape((x.shape[0], 1))
+        # dist = ||x-y||^2
         dist = (x**2).sum(1).reshape((x.shape[0], 1)) - 2*x.dot(y.T) + (y**2).sum(1).reshape((1,y.shape[0]))
         dist = T.clip(dist, 1e-10, 1e20)
         rbf_kernel, _ = theano.scan(fn=lambda sigma, distance: T.exp(-sigma*distance),
@@ -179,12 +179,16 @@ class MMDReward(object):
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
             kernel_learned_total += kernel_learned_sum
+            print("kernel_learned.shape : ", kernel_learned.shape)
+            print("N : ", N)
 
             kernel_expert, kernel_expert_sum = \
                 self.kernel_function(self.expert_feat_B_Df,
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
             kernel_expert_total += kernel_expert_sum
+            print("kernel_expert.shape : ", kernel_expert.shape)
+            print("M : ", M)
 
             # Cost function = Unnormalized Witness Function
             cost_B[indices] = kernel_learned / N - kernel_expert / M
@@ -212,6 +216,8 @@ class MMDReward(object):
             assert (shifted_r_B <= 0).all()
         else:
             assert (shifted_r_B >= 0).all()
+
+        self.current_reward = shifted_r_B
 
         return shifted_r_B
 
