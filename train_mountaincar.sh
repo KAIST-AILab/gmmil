@@ -1,0 +1,14 @@
+python scripts/imitate_mj.py --mode gmmil \
+  --seed 2 \
+  --reward_type mmd \
+  --env MountainCar-v0 \
+  --data imitation_runs/classic/trajs/trajs_mountaincar.h5 \
+  --limit_trajs 7 \
+  --data_subsamp_freq 5 \
+  --favor_zero_expert_reward 1 \
+  --min_total_sa 5000 \
+  --sim_batch_size 1 \
+  --kernel_batchsize 1000 \
+  --max_iter 1001 \
+  --reward_include_time 0 \
+  --log outputs/gmmil-mountaincar.h5 \

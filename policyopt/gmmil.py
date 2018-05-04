@@ -11,9 +11,8 @@ class MMDReward(object):
     # This is just copy version of LinearReward
     # TODO-LIST : reward function equals to MMD witness function!!
     # Consider only Gaussian Kernel first
-    # TODO-0 : Start from the Linear Kernel!
-    # TODO-1 : Where we apply the median heuristic to determine bandwidth parameters?
-    # TODO-2 : How can we implement Gaussian Kernel function?
+    # TODO-1 : Determine bandwidth parameters
+    # TODO-2 : Implement Radial Basis Kernel function
 
     def __init__(self,
             obsfeat_space, action_space,
@@ -223,8 +222,15 @@ class MMDReward(object):
         #assert r_B.shape == (obsfeat_B_Do.shape[0],)
 
         if self.favor_zero_expert_reward:
+            # 0 for expert-like states, goes to -inf for non-expert-like states
+            # compatible with envs with traj cutoffs for good (expert-like) behavior
+            # e.g. mountain car, which gets cut off when the car reaches the destination
+            # rewards_B = thutil.logsigmoid(scores_B)
             self.reward_bound = max(self.reward_bound, r_B.max())
         else:
+            # 0 for non-expert-like states, goes to +inf for expert-like states
+            # compatible with envs with traj cutoffs for bad (non-expert-like) behavior
+            # e.g. walking simulations that get cut off when the robot falls over
             self.reward_bound = min(self.reward_bound, r_B.min())
 
         shifted_r_B = r_B - self.reward_bound
