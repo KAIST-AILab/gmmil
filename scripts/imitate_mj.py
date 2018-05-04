@@ -94,7 +94,7 @@ def main():
     parser.add_argument('--favor_zero_expert_reward', type=int, default=0)
     # Generative Moment matching
     parser.add_argument('--kernel_batchsize', type=int, default=1000)
-    parser.add_argument('--use_median_heuristic', type=int, default=0)
+    parser.add_argument('--use_median_heuristic', type=int, default=1)
     #parser.add_argument('--use_auto_encoder', type=bool, default=False)
     # Auto-Encoder Information
     # Saving stuff

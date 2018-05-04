@@ -1,4 +1,5 @@
 from . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, thutil
+import policyopt
 import numpy as np
 import theano.tensor as T
 
@@ -30,7 +31,6 @@ class MMDReward(object):
         self.include_time = include_time
         self.time_scale = time_scale
         self.exobs_Bex_Do, self.exa_Bex_Da, self.ext_Bex = exobs_Bex_Do, exa_Bex_Da, ext_Bex
-        #print "exobs_Bex_Do.shape : ", exobs_Bex_Do.shape
 
         with nn.variable_scope('inputnorm'):
             # Standardize both observations and actions if actions are continuous
@@ -60,7 +60,6 @@ class MMDReward(object):
         # Bandwidth parameters = sigmas
         x = T.matrix('x') # matrix concatenate x,y
         y = T.matrix('y')
-        #xy = T.concatenate((x, y), axis=1)
         sigmas = T.vector('sigmas')
 
         # dist = ||x-y||^2
@@ -78,9 +77,10 @@ class MMDReward(object):
                                                allow_input_downcast=True)
 
         # Evaluate k( expert, expert )
-        _, self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
-                                                         self.expert_feat_B_Df,
-                                                         self.kernel_bandwidth_params)
+        if not self.use_median_heuristic:
+            _, self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
+                                                             self.expert_feat_B_Df,
+                                                             self.kernel_bandwidth_params)
 
 
     def _featurize(self, obsfeat_B_Do, a_B_Da, t_B):
@@ -101,7 +101,6 @@ class MMDReward(object):
         # Concatenate with other stuff to get final features
         scaledt_B_1 = t_B[:,None]*self.time_scale
         if isinstance(self.action_space, ContinuousSpace):
-            #feat_cols = [obsfeat_B_Do, a_B_Da, (self.sqscale*obsfeat_B_Do)**2, (self.sqscale*a_B_Da)**2]
             feat_cols = [obsfeat_B_Do, a_B_Da]
             if self.include_time:
                 feat_cols.extend([scaledt_B_1, scaledt_B_1**2, scaledt_B_1**3])
@@ -131,27 +130,42 @@ class MMDReward(object):
         assert feat_B_Df.ndim == 2 and feat_B_Df.shape[0] == B
         return feat_B_Df
 
+    def _get_median_bandwidth(self, feat_B_Df):
+        print "Calculating bandwitdh parameters..."
+        sigmas = []
 
-    def _compute_featexp(self, obsfeat_B_Do, a_B_Da, t_B):
-        # Compute empirical expectation of feature vectors
-        # We don't need this function to implement GMMIL
-        return self._featurize(obsfeat_B_Do, a_B_Da, t_B).mean(axis=0)
+        N = feat_B_Df.shape[0]
+        M = self.expert_feat_B_Df.shape[0]
+        index = np.random.choice(N, M, replace=False)
+        initial_points = feat_B_Df[index, :]
 
+        # sigma_1 : median of pairwise squared-l2 distance between
+        #           data points from the expert policy and from initial policy
+        XX = np.multiply(initial_points, initial_points).sum(axis=1)
+        YY = np.multiply(self.expert_feat_B_Df, self.expert_feat_B_Df).sum(axis=1)
+        dist_matrix = XX + YY.T - 2 * np.matmul(initial_points, self.expert_feat_B_Df.T)
+        dist_array = np.asarray(dist_matrix).reshape(-1)
+        sigma_1 = 1./np.median(dist_array)
+        sigmas.append(sigma_1)
+
+        # sigma_2 : median of pairwise squared-l2 distance among
+        #           data points from the expert policy
+        dist_matrix = YY + YY.T - 2 * np.matmul(self.expert_feat_B_Df, self.expert_feat_B_Df.T)
+        dist_array = np.asarray(dist_matrix).reshape(-1)
+        sigma_2 = 1. / np.median(dist_array)
+        sigmas.append(sigma_2)
+
+        print "sigmas : ", sigmas
+
+        return sigmas
 
     def fit(self, obsfeat_B_Do, a_B_Da, t_B, _unused_exobs_Bex_Do, _unused_exa_Bex_Da, _unused_ext_Bex):
         # Ignore expert data inputs here, we'll use the one provided in the constructor.
         # Current feature expectations
-        # TODO: Is there anything we have to 'fit' with MMD Reward?: Nothing to do!
+        # MMD Reward : Nothing to do
 
-        #curr_feat_Df = self._compute_featexp(obsfeat_B_Do, a_B_Da, t_B)
-
-        # Compute adversary reward
-        #self.w = self.expert_feat_Df - curr_feat_Df
-        #l2 = np.linalg.norm(self.w)
-        #self.w /= l2 + 1e-8
-        #return [('l2', l2, float)]
-        return [('MMD^2*1000',self.mmd_square*1000, float)]
-
+        return [('MMD^2*1000',self.mmd_square*1000, float),
+                ('cur_reward',self.current_reward, float)]
 
     def compute_reward(self, obsfeat_B_Do, a_B_Da, t_B):
         # Features from Learned Policy Trajectory
@@ -159,12 +173,11 @@ class MMDReward(object):
         # Note thant features from expert trajectory : self.expert_feat_B_Df
         cost_B = np.zeros(feat_B_Df.shape[0])
 
-
-        #print "feat_B_Df.shape :", feat_B_Df.shape
-        #print "expert_feat_B_Df.shape :", self.expert_feat_B_Df.shape
-
-        if self.use_median_heuristic:
-            pass
+        if len(self.kernel_bandwidth_params) == 0:
+            self.kernel_bandwidth_params = self._get_median_bandwidth(feat_B_Df)
+            _, self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
+                                                             self.expert_feat_B_Df,
+                                                             self.kernel_bandwidth_params)
 
         N = feat_B_Df.shape[0]
         M = self.expert_feat_B_Df.shape[0]
@@ -172,20 +185,14 @@ class MMDReward(object):
         kernel_learned_total = 0
         kernel_expert_total = 0
 
-        #batchsize = min(self.kernel_batchsize, M)
         batchsize = self.kernel_batchsize
 
         total_index = range(len(t_B))
         start_index = [index for index in total_index[0:len(t_B):batchsize]]
         end_index = [index for index in total_index[batchsize:len(t_B):batchsize]]
         end_index.append(len(t_B))
-        indices_list = [range(start,end) for (start, end) in zip(start_index, end_index)]
+        indices_list = [range(start, end) for (start, end) in zip(start_index, end_index)]
 
-        #batch_iter = len(t_B) // batchsize
-
-        print N
-
-        #for i range(batch_iter):
         for indices in indices_list:
             #indices = range(i*batchsize, (i+1)*batchsize)
             kernel_learned, kernel_learned_sum = \
@@ -217,10 +224,8 @@ class MMDReward(object):
             cost_B /= np.sqrt(self.mmd_square)
 
         r_B = -cost_B
-        print("Average r_B: ", np.array(map(lambda x: x**2, r_B)).mean(axis=0))
-        #r_B = ( feat_B_Df.dot(self.w)) / float(feat_B_Df.shape[1] )
-        #assert r_B.shape == (obsfeat_B_Do.shape[0],)
 
+        # TODO: logarithmetic reward?
         if self.favor_zero_expert_reward:
             # 0 for expert-like states, goes to -inf for non-expert-like states
             # compatible with envs with traj cutoffs for good (expert-like) behavior
