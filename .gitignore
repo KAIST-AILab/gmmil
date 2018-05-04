@@ -5,3 +5,4 @@ train_scripts/*
 policyopt/*.pyc
 outputs/*
 train.sh
+train_*.sh

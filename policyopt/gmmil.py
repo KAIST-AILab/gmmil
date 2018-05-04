@@ -11,13 +11,8 @@ class MMDReward(object):
     # This is just copy version of LinearReward
     # TODO-LIST : cost function equals to MMD witness function!!
     # Consider only Gaussian Kernel first
-<<<<<<< HEAD
-    # TODO-1 : Where we apply the median heuristic to determine bandwidth parameters?
-    # TODO-2 : How can we implement Radial Basis Kernel function?
-=======
     # TODO-1 : Determine bandwidth parameters
     # TODO-2 : Implement Radial Basis Kernel function
->>>>>>> aa686be7464f8332b748d96f3a46d4f85c490d4a
 
     def __init__(self,
             obsfeat_space, action_space,
