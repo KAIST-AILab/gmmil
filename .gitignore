@@ -2,4 +2,6 @@
 imitation_runs/*
 classic_policies/*
 train_scripts/*
+policyopt/*.pyc
 outputs/*
+train.sh
