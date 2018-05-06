@@ -237,6 +237,8 @@ SimConfig = namedtuple('SimConfig', 'min_num_trajs min_total_sa batch_size max_t
 
 class MDP(object):
     '''General MDP'''
+    def __init__(self):
+        self.sim = None
 
     @property
     def obs_space(self):
@@ -256,7 +258,11 @@ class MDP(object):
 
     def sim_single(self, policy_fn, obsfeat_fn, max_traj_len, init_state=None):
         '''Simulate a single trajectory'''
-        sim = self.new_sim(init_state=init_state)
+        if self.sim is None:
+            self.sim = self.new_sim(init_state=init_state)
+        sim = self.sim
+        sim.reset()
+
         obs, obsfeat, actions, actiondists, rewards = [], [], [], [], []
         for _ in xrange(max_traj_len):
             obs.append(sim.obs[None,...].copy())

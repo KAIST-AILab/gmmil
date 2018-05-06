@@ -95,6 +95,7 @@ def main():
     # Generative Moment matching
     parser.add_argument('--kernel_batchsize', type=int, default=1000)
     parser.add_argument('--use_median_heuristic', type=int, default=1)
+    parser.add_argument('--multiple_trpo_steps', type=int, default=1)
     #parser.add_argument('--use_auto_encoder', type=bool, default=False)
     # Auto-Encoder Information
     # Saving stuff
@@ -179,6 +180,7 @@ def main():
                 time_scale=1./mdp.env_spec.timestep_limit,
                 favor_zero_expert_reward=bool(args.favor_zero_expert_reward),
                 varscope_name='TransitionClassifier')
+
         elif args.reward_type in ['l2ball', 'simplex']:
             reward = imitation.LinearReward(
                 obsfeat_space=mdp.obs_space,
@@ -220,10 +222,10 @@ def main():
             policy_ent_reg=args.policy_ent_reg,
             ex_obs=exobs_Bstacked_Do,
             ex_a=exa_Bstacked_Da,
-            ex_t=ext_Bstacked)
+            ex_t=ext_Bstacked,
+            multi_steps=args.multiple_trpo_steps )
 
     elif args.mode == 'gmmil':
-        # TODO: Implement Median Heuristic Here
         if not bool(args.use_median_heuristic):
             bandwidth_params = [1.0, 1.0/2.0, 1.0/5.0, 1.0/10.0, 1.0/40.0, 1.0/80.0]
         else:
@@ -273,7 +275,8 @@ def main():
             policy_ent_reg=args.policy_ent_reg,
             ex_obs=exobs_Bstacked_Do,
             ex_a=exa_Bstacked_Da,
-            ex_t=ext_Bstacked)
+            ex_t=ext_Bstacked,
+            multi_steps=args.multiple_trpo_steps)
 
     # Set observation normalization
     if args.obsnorm_mode == 'expertdata':

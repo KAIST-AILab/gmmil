@@ -6,3 +6,5 @@ policyopt/*.pyc
 outputs/*
 train.sh
 train_*.sh
+go*.sh
+gputest.py

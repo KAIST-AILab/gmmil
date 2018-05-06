@@ -69,6 +69,8 @@ class RLGymMDP(policyopt.MDP):
         self.env_spec = tmpsim.env.spec
         self.gym_env = tmpsim.env
 
+        self.sim = None
+
     @property
     def obs_space(self):
         return self._obs_space

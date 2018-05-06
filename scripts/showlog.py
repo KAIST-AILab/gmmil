@@ -40,7 +40,6 @@ def main():
                 print fname
                 print df[-1:]
 
-
             df['vf_r2'] = np.maximum(0,df['vf_r2'])
 
             if ax is None:

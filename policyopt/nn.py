@@ -113,7 +113,7 @@ class Model(object):
         for v in self.get_trainable_variables():
             val = v.get_value()
             s = val.size
-            v.set_value(x[pos:pos+s].reshape(val.shape))
+            v.set_value(x[pos:pos+s].reshape(val.shape).astype(theano.config.floatX))
             pos += s
         assert pos == x.shape[0]
 

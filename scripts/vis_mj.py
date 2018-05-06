@@ -82,19 +82,26 @@ def main():
             returns = []
             lengths = []
             sim = mdp.new_sim()
+
             for i_traj in xrange(n):
-                print i_traj, n
+                iteration = 0
                 sim.reset()
                 totalr = 0.
                 l = 0
-                while not sim.done:
+                while not sim.done and iteration < args.max_traj_len:
                     a = policy.sample_actions(sim.obs[None,:], bool(args.deterministic))[0][0,:]
                     r = sim.step(a)
                     totalr += r
                     l += 1
+                    iteration += 1
+
+                print i_traj, n, totalr, iteration
                 returns.append(totalr)
                 lengths.append(l)
-        import IPython; IPython.embed()
+
+            print 'Avg Return: ', np.array(returns).mean()
+            print 'Std Return: ', np.array(returns).std()
+        #import IPython; IPython.embed()
 
     elif args.out is not None:
         # Sample trajs and write to file
@@ -136,7 +143,10 @@ def main():
         # Animate
         sim = mdp.new_sim()
         raw_obs, normalized_obs = [], []
-        while True:
+
+        tret_list = []
+        iteration=0
+        while iteration < 50:
             sim.reset()
             totalr = 0.
             steps = 0
@@ -150,12 +160,19 @@ def main():
                 steps += 1
                 sim.draw()
 
-                if steps % 1000 == 0:
+                if steps % args.max_traj_len  == 0:
                     tmpraw = np.concatenate(raw_obs, axis=0)
                     tmpnormed = np.concatenate(normalized_obs, axis=0)
                     print 'raw mean, raw std, normed mean, normed std'
                     print np.stack([tmpraw.mean(0), tmpraw.std(0), tmpnormed.mean(0), tmpnormed.std(0)])
+                    break
             print 'Steps: %d, return: %.5f' % (steps, totalr)
+            tret_list.append(totalr)
+            iteration += 1
+
+        print 'Avg Return: ', np.array(tret_list).mean()
+        print 'Std Return: ', np.array(tret_list).std()
+
 
 if __name__ == '__main__':
     main()

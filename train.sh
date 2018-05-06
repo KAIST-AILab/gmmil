@@ -1,14 +1,13 @@
-python scripts/imitate_mj.py --mode gmmil \
-  --seed 1 \
+CUDA_VISIBLE_DEVICES=1 python scripts/imitate_mj.py --mode gmmil \
+  --seed 2 \
   --reward_type mmd \
-  --env CartPole-v0 \
-  --data imitation_runs/classic/trajs/trajs_cartpole.h5 \
-  --limit_trajs 10 \
-  --data_subsamp_freq 5 \
+  --env Walker2d-v1 \
+  --data imitation_runs/modern_stochastic/trajs/trajs_walker.h5 \
+  --limit_trajs 25 \
+  --data_subsamp_freq 20 \
   --favor_zero_expert_reward 0 \
-  --min_total_sa 5000 \
-  --sim_batch_size 1 \
+  --min_total_sa 50000 \
   --kernel_batchsize 1000 \
   --max_iter 1001 \
   --reward_include_time 0 \
-  --log outputs/gmmil-cartpole.h5 \
+  --log gmmil-walker2d-traj25.h5 

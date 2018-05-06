@@ -64,7 +64,7 @@ class MMDReward(object):
 
         # dist = ||x-y||^2
         dist = (x**2).sum(1).reshape((x.shape[0], 1)) -2*x.dot(y.T) + (y**2).sum(1).reshape((1, y.shape[0]))
-        dist = T.clip(dist, 1e-10, 1e20)
+        #dist = T.clip(dist, 1e-10, 1e20)
         rbf_kernel, _ = theano.scan(fn=lambda sigma, distance: T.exp(-sigma*distance),
                                     outputs_info=None,
                                     sequences=sigmas, non_sequences=dist)
@@ -164,8 +164,7 @@ class MMDReward(object):
         # Current feature expectations
         # MMD Reward : Nothing to do
 
-        return [('MMD^2*1000',self.mmd_square*1000, float),
-                ('cur_reward',self.current_reward, float)]
+        return [('MMD^2*1000', self.mmd_square*1000, float)]
 
     def compute_reward(self, obsfeat_B_Do, a_B_Da, t_B):
         # Features from Learned Policy Trajectory
@@ -211,34 +210,42 @@ class MMDReward(object):
             cost_B[indices] = kernel_learned - kernel_expert
 
 
-        print "kernel_learned_total :", kernel_learned_total
-        print "kernel_expert_total :", kernel_expert_total
-        print "kernel_exex_total : ", self.kernel_exex_total
+        # print "kernel_learned_total :", kernel_learned_total
+        # print "kernel_expert_total :", kernel_expert_total
+        # print "kernel_exex_total : ", self.kernel_exex_total
 
         self.mmd_square = kernel_learned_total/N - 2.* kernel_expert_total / N + self.kernel_exex_total / M
 
-        print "mmd_square : ", self.mmd_square
-        print "mmd : ", np.sqrt(self.mmd_square)
+        # print "mmd_square : ", self.mmd_square
+        # print "mmd : ", np.sqrt(self.mmd_square)
 
         if self.mmd_square > 0:
             cost_B /= np.sqrt(self.mmd_square)
 
         r_B = -cost_B
+        reward_max = max(self.reward_bound, r_B.max())
+        reward_min = min(self.reward_bound, r_B.min())
+        #margin = (reward_max - reward_min) * 0.005
 
-        # TODO: logarithmetic reward?
+        # TODO: logarithmetic reward
         if self.favor_zero_expert_reward:
             # 0 for expert-like states, goes to -inf for non-expert-like states
             # compatible with envs with traj cutoffs for good (expert-like) behavior
             # e.g. mountain car, which gets cut off when the car reaches the destination
             # rewards_B = thutil.logsigmoid(scores_B)
-            self.reward_bound = max(self.reward_bound, r_B.max())
+            # self.reward_bound = max(self.reward_bound, r_B.max())
+            # shifted_r_B = np.log((r_B - reward_min + margin)/(reward_max - reward_min + margin))
+            shifted_r_B = r_B - reward_max
+
         else:
             # 0 for non-expert-like states, goes to +inf for expert-like states
             # compatible with envs with traj cutoffs for bad (non-expert-like) behavior
             # e.g. walking simulations that get cut off when the robot falls over
-            self.reward_bound = min(self.reward_bound, r_B.min())
+            #self.reward_bound = min(self.reward_bound, r_B.min())
+            # shifted_r_B = -np.log((reward_max - r_B + margin)/(reward_max - reward_min + margin))
+            shifted_r_B = r_B - reward_min
 
-        shifted_r_B = r_B - self.reward_bound
+            #shifted_r_B = r_B - self.reward_bound
         if self.favor_zero_expert_reward:
             assert (shifted_r_B <= 0).all()
         else:
