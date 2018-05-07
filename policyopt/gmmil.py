@@ -23,7 +23,8 @@ class MMDReward(object):
             exobs_Bex_Do, exa_Bex_Da, ext_Bex,
             kernel_bandwidth_params,
             kernel_batchsize,
-            use_median_heuristic
+            use_median_heuristic,
+            logreward
             ):
 
         self.obsfeat_space, self.action_space = obsfeat_space, action_space
@@ -31,6 +32,7 @@ class MMDReward(object):
         self.include_time = include_time
         self.time_scale = time_scale
         self.exobs_Bex_Do, self.exa_Bex_Da, self.ext_Bex = exobs_Bex_Do, exa_Bex_Da, ext_Bex
+        self.logreward = logreward
 
         with nn.variable_scope('inputnorm'):
             # Standardize both observations and actions if actions are continuous
@@ -225,25 +227,28 @@ class MMDReward(object):
         r_B = -cost_B
         reward_max = max(self.reward_bound, r_B.max())
         reward_min = min(self.reward_bound, r_B.min())
-        #margin = (reward_max - reward_min) * 0.005
+        margin = (reward_max - reward_min) * 0.005
 
-        # TODO: logarithmetic reward
         if self.favor_zero_expert_reward:
             # 0 for expert-like states, goes to -inf for non-expert-like states
             # compatible with envs with traj cutoffs for good (expert-like) behavior
             # e.g. mountain car, which gets cut off when the car reaches the destination
             # rewards_B = thutil.logsigmoid(scores_B)
             # self.reward_bound = max(self.reward_bound, r_B.max())
-            # shifted_r_B = np.log((r_B - reward_min + margin)/(reward_max - reward_min + margin))
-            shifted_r_B = r_B - reward_max
+            if self.logreward:
+                shifted_r_B = np.log((r_B - reward_min + margin) / (reward_max - reward_min + margin))
+            else:
+                shifted_r_B = r_B - reward_max
 
         else:
             # 0 for non-expert-like states, goes to +inf for expert-like states
             # compatible with envs with traj cutoffs for bad (non-expert-like) behavior
             # e.g. walking simulations that get cut off when the robot falls over
             #self.reward_bound = min(self.reward_bound, r_B.min())
-            # shifted_r_B = -np.log((reward_max - r_B + margin)/(reward_max - reward_min + margin))
-            shifted_r_B = r_B - reward_min
+            if self.logreward:
+                shifted_r_B = -np.log((reward_max - r_B + margin) / (reward_max - reward_min + margin))
+            else:
+                shifted_r_B = r_B - reward_min
 
             #shifted_r_B = r_B - self.reward_bound
         if self.favor_zero_expert_reward:

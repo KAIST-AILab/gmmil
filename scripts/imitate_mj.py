@@ -96,6 +96,7 @@ def main():
     parser.add_argument('--kernel_batchsize', type=int, default=1000)
     parser.add_argument('--use_median_heuristic', type=int, default=1)
     parser.add_argument('--multiple_trpo_steps', type=int, default=1)
+    parser.add_argument('--logreward', type=int, default=0)
     #parser.add_argument('--use_auto_encoder', type=bool, default=False)
     # Auto-Encoder Information
     # Saving stuff
@@ -244,7 +245,8 @@ def main():
                 ext_Bex=ext_Bstacked,
                 kernel_bandwidth_params=bandwidth_params,
                 kernel_batchsize=args.kernel_batchsize,
-                use_median_heuristic=bool(args.use_median_heuristic)
+                use_median_heuristic=bool(args.use_median_heuristic),
+                logreward=bool(args.logreward)
             )
         else:
             raise NotImplementedError(args.reward_type)

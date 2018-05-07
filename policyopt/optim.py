@@ -131,7 +131,7 @@ def make_ngstep_func(model, compute_obj_kl, compute_obj_kl_with_grad, compute_kl
         params0 = model.get_params()
         obj0, kl0, objgrad0 = compute_obj_kl_with_grad(*feed)
         gnorm = util.maxnorm(objgrad0)
-        assert np.allclose(kl0, 0), 'Initial KL divergence is %.7f, but should be 0' % (kl0,)
+        assert np.allclose(kl0, 0, atol=0.01), 'Initial KL divergence is %.7f, but should be 0' % (kl0,)
         # Terminate early if gradient is too small
         if gnorm < grad_stop_tol:
             return NGStepInfo(obj0, kl0, obj0, kl0, gnorm, 0)

@@ -338,7 +338,8 @@ def TRPO(max_kl, damping, subsample_hvp_frac=.1, grad_stop_tol=1e-6):
 
     def trpo_step(policy, params0_P, obsfeat, a, adist, adv):
         feed = (obsfeat, a, adist, util.standardized(adv))
-        stepinfo = policy._ngstep(feed, max_kl=max_kl, damping=damping, subsample_hvp_frac=subsample_hvp_frac, grad_stop_tol=grad_stop_tol)
+        stepinfo = policy._ngstep(feed, max_kl=max_kl, damping=damping,
+                                  subsample_hvp_frac=subsample_hvp_frac, grad_stop_tol=grad_stop_tol)
         return [
             ('dl', stepinfo.obj1 - stepinfo.obj0, float), # improvement of penalized objective
             ('kl', stepinfo.kl1, float), # kl cost of solution

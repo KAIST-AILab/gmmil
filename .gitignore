@@ -1,10 +1,10 @@
 .idea/*
+.ipynb_checkpoints/*
 imitation_runs/*
 classic_policies/*
 train_scripts/*
 policyopt/*.pyc
 outputs/*
-train.sh
-train_*.sh
-go*.sh
+*.sh
+submit
 gputest.py

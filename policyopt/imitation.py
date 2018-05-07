@@ -449,6 +449,7 @@ class ImitationOptimizer(object):
 
             # Compute baseline / advantages
             # print 'Computing advantages'
+
             with util.Timer() as t_adv:
                 # Compute observation features for reward input
                 samp_robsfeat_stacked = self.reward_obsfeat_fn(sampbatch.obs.stacked)
@@ -477,12 +478,17 @@ class ImitationOptimizer(object):
 
             # Take a step
             # print 'Fitting policy'
+            # init_policy_parameter = self.policy.get_params()
+            import copy
             with util.Timer() as t_step:
+                #init_policy = copy.deepcopy(self.policy)
+                #params0_P = copy.deepcopy(self.policy.get_params())
                 params0_P = self.policy.get_params()
                 step_print = self.step_func(
                     self.policy, params0_P,
                     samp_pobsfeat.stacked, sampbatch.a.stacked, sampbatch.adist.stacked,
                     advantages.stacked)
+
                 self.policy.update_obsnorm(samp_pobsfeat.stacked)
 
             # Fit reward function
