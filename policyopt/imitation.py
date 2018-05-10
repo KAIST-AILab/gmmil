@@ -412,7 +412,7 @@ class LinearReward(object):
 
 class ImitationOptimizer(object):
     def __init__(self, mdp, discount, lam, policy, sim_cfg, step_func, reward_func, value_func,
-                 policy_obsfeat_fn, reward_obsfeat_fn, policy_ent_reg, ex_obs, ex_a, ex_t, multi_steps):
+                 policy_obsfeat_fn, reward_obsfeat_fn, policy_ent_reg, ex_obs, ex_a, ex_t):
         self.mdp, self.discount, self.lam, self.policy = mdp, discount, lam, policy
         self.sim_cfg = sim_cfg
         self.step_func = step_func
@@ -432,8 +432,6 @@ class ImitationOptimizer(object):
         self.total_time = 0.
         self.curr_iter = 0
         self.last_sampbatch = None # for outside access for debugging
-
-        self.multi_steps = multi_steps
 
     def step(self):
         with util.Timer() as t_all:
@@ -478,11 +476,8 @@ class ImitationOptimizer(object):
 
             # Take a step
             # print 'Fitting policy'
-            # init_policy_parameter = self.policy.get_params()
-            import copy
             with util.Timer() as t_step:
-                #init_policy = copy.deepcopy(self.policy)
-                #params0_P = copy.deepcopy(self.policy.get_params())
+
                 params0_P = self.policy.get_params()
                 step_print = self.step_func(
                     self.policy, params0_P,

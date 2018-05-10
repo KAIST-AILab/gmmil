@@ -95,9 +95,7 @@ def main():
     # Generative Moment matching
     parser.add_argument('--kernel_batchsize', type=int, default=1000)
     parser.add_argument('--use_median_heuristic', type=int, default=1)
-    parser.add_argument('--multiple_trpo_steps', type=int, default=1)
-    parser.add_argument('--logreward', type=int, default=0)
-    #parser.add_argument('--use_auto_encoder', type=bool, default=False)
+    parser.add_argument('--use_logscale_reward', action='store_true')
     # Auto-Encoder Information
     # Saving stuff
     parser.add_argument('--print_freq', type=int, default=1)
@@ -223,11 +221,10 @@ def main():
             policy_ent_reg=args.policy_ent_reg,
             ex_obs=exobs_Bstacked_Do,
             ex_a=exa_Bstacked_Da,
-            ex_t=ext_Bstacked,
-            multi_steps=args.multiple_trpo_steps )
+            ex_t=ext_Bstacked)
 
     elif args.mode == 'gmmil':
-        if not bool(args.use_median_heuristic):
+        if args.use_median_heuristic == 0:
             bandwidth_params = [1.0, 1.0/2.0, 1.0/5.0, 1.0/10.0, 1.0/40.0, 1.0/80.0]
         else:
             bandwidth_params = []
@@ -245,8 +242,8 @@ def main():
                 ext_Bex=ext_Bstacked,
                 kernel_bandwidth_params=bandwidth_params,
                 kernel_batchsize=args.kernel_batchsize,
-                use_median_heuristic=bool(args.use_median_heuristic),
-                logreward=bool(args.logreward)
+                use_median_heuristic=args.use_median_heuristic,
+                use_logscale_reward=args.use_logscale_reward
             )
         else:
             raise NotImplementedError(args.reward_type)
@@ -277,8 +274,8 @@ def main():
             policy_ent_reg=args.policy_ent_reg,
             ex_obs=exobs_Bstacked_Do,
             ex_a=exa_Bstacked_Da,
-            ex_t=ext_Bstacked,
-            multi_steps=args.multiple_trpo_steps)
+            ex_t=ext_Bstacked
+            )
 
     # Set observation normalization
     if args.obsnorm_mode == 'expertdata':
