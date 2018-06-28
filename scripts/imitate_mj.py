@@ -92,16 +92,20 @@ def main():
     parser.add_argument('--sim_batch_size', type=int, default=None)
     parser.add_argument('--min_total_sa', type=int, default=50000)
     parser.add_argument('--favor_zero_expert_reward', type=int, default=0)
+    parser.add_argument('--use_shared_std_network', type=int, default=0)
     # Generative Moment matching
     parser.add_argument('--kernel_batchsize', type=int, default=1000)
+    parser.add_argument('--kernel_reg_weight', type=float, default=0.)
     parser.add_argument('--use_median_heuristic', type=int, default=1)
-    parser.add_argument('--use_logscale_reward', action='store_true')
+    parser.add_argument('--use_logscale_reward', type=int)
+    parser.add_argument('--reward_epsilon', type=float, default=0.0001)
     # Auto-Encoder Information
     # Saving stuff
     parser.add_argument('--print_freq', type=int, default=1)
     parser.add_argument('--save_freq', type=int, default=20)
     parser.add_argument('--plot_freq', type=int, default=0)
     parser.add_argument('--log', type=str, required=False)
+    parser.add_argument('--save_reward', type=int, default=0)
 
     args = parser.parse_args()
 
@@ -123,12 +127,12 @@ def main():
             min_stdev=0.,
             init_logstdev=0.,
             enable_obsnorm=enable_obsnorm)
-        policy = rl.GaussianPolicy(policy_cfg, mdp.obs_space, mdp.action_space, 'GaussianPolicy')
+        policy = rl.GaussianPolicy(policy_cfg, mdp.obs_space, mdp.action_space, 'GaussianPolicy', bool(args.use_shared_std_network))
     else:
         policy_cfg = rl.GibbsPolicyConfig(
             hidden_spec=args.policy_hidden_spec,
             enable_obsnorm=enable_obsnorm)
-        policy = rl.GibbsPolicy(policy_cfg, mdp.obs_space, mdp.action_space, 'GibbsPolicy')
+        policy = rl.GibbsPolicy(policy_cfg, mdp.obs_space, mdp.action_space, 'GibbsPolicy', bool(args.use_shared_std_network))
 
     util.header('Policy architecture')
     for v in policy.get_trainable_variables():
@@ -241,9 +245,12 @@ def main():
                 exa_Bex_Da=exa_Bstacked_Da,
                 ext_Bex=ext_Bstacked,
                 kernel_bandwidth_params=bandwidth_params,
+                kernel_reg_weight=args.kernel_reg_weight,
                 kernel_batchsize=args.kernel_batchsize,
                 use_median_heuristic=args.use_median_heuristic,
-                use_logscale_reward=args.use_logscale_reward
+                use_logscale_reward=bool(args.use_logscale_reward),
+                save_reward=bool(args.save_reward),
+                epsilon=args.reward_epsilon
             )
         else:
             raise NotImplementedError(args.reward_type)

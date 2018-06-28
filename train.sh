@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1 python scripts/imitate_mj.py --mode gmmil \
+CUDA_VISIBLE_DEVICES=0 python scripts/imitate_mj.py --mode gmmil \
   --seed 2 \
   --reward_type mmd \
   --env Walker2d-v1 \
@@ -9,5 +9,8 @@ CUDA_VISIBLE_DEVICES=1 python scripts/imitate_mj.py --mode gmmil \
   --min_total_sa 50000 \
   --kernel_batchsize 1000 \
   --max_iter 1001 \
-  --reward_include_time 0 \
-  --log gmmil-walker2d-traj25.h5 
+  --kernel_reg_weight $1 \
+  --sim_batch_size 1 \
+  --use_median_heuristic 3 \
+  --use_logscale_reward 1 \
+  --log outputs_gmmil/gmmil-walker2d-traj25-kern$1.h5 

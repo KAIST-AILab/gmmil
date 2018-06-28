@@ -409,6 +409,7 @@ class LinearReward(object):
             self.inputnorm.update(obs_B_Do)
         self.inputnorm_updated = True
 
+import pickle
 
 class ImitationOptimizer(object):
     def __init__(self, mdp, discount, lam, policy, sim_cfg, step_func, reward_func, value_func,
@@ -444,6 +445,12 @@ class ImitationOptimizer(object):
                     cfg=self.sim_cfg)
                 samp_pobsfeat = sampbatch.obsfeat
                 self.last_sampbatch = sampbatch
+                # if self.curr_iter % 50 == 0:
+                #     print('Save batch (s,a) pair information into pickle file sa_info.pk ...')
+                #     with open('sa_info.pk', 'wb') as saf:
+                #         pickle.dump(samp_pobsfeat, saf)
+                #print len(sampbatch.trajs)
+                #print sampbatch.trajs[0].obs_T_Do
 
             # Compute baseline / advantages
             # print 'Computing advantages'

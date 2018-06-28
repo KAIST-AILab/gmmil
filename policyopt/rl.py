@@ -10,8 +10,9 @@ from theano import tensor
 from abc import abstractmethod
 
 class Policy(nn.Model):
-    def __init__(self, obsfeat_space, action_space, num_actiondist_params, enable_obsnorm, varscope_name):
+    def __init__(self, obsfeat_space, action_space, num_actiondist_params, enable_obsnorm, varscope_name, use_shared_std_network):
         self.obsfeat_space, self.action_space, self._num_actiondist_params = obsfeat_space, action_space, num_actiondist_params
+        self.use_shared_std_network = use_shared_std_network
 
         with nn.variable_scope(varscope_name) as self.__varscope:
             # Action distribution for this current policy
@@ -102,7 +103,7 @@ class Policy(nn.Model):
 
 GaussianPolicyConfig = namedtuple('GaussianPolicyConfig', 'hidden_spec, min_stdev, init_logstdev, enable_obsnorm')
 class GaussianPolicy(Policy):
-    def __init__(self, cfg, obsfeat_space, action_space, varscope_name):
+    def __init__(self, cfg, obsfeat_space, action_space, varscope_name, use_shared_std_network):
         assert isinstance(cfg, GaussianPolicyConfig)
         assert isinstance(obsfeat_space, ContinuousSpace) and isinstance(action_space, ContinuousSpace)
 
@@ -113,22 +114,38 @@ class GaussianPolicy(Policy):
             action_space=action_space,
             num_actiondist_params=action_space.dim*2,
             enable_obsnorm=cfg.enable_obsnorm,
-            varscope_name=varscope_name)
+            varscope_name=varscope_name,
+            use_shared_std_network=use_shared_std_network)
 
 
     def _make_actiondist_ops(self, obsfeat_B_Df):
         # Computes action distribution mean (of a Gaussian) using MLP
         with nn.variable_scope('hidden'):
             net = nn.FeedforwardNet(obsfeat_B_Df, (self.obsfeat_space.dim,), self.cfg.hidden_spec)
-        with nn.variable_scope('out'):
-            mean_layer = nn.AffineLayer(net.output, net.output_shape, (self.action_space.dim,), initializer=np.zeros((net.output_shape[0], self.action_space.dim)))
-            assert mean_layer.output_shape == (self.action_space.dim,)
-        means_B_Da = mean_layer.output
 
-        # Action distribution log standard deviations are parameters themselves
-        logstdevs_1_Da = nn.get_variable('logstdevs_1_Da', np.full((1, self.action_space.dim), self.cfg.init_logstdev), broadcastable=(True,False))
-        stdevs_1_Da = self.cfg.min_stdev + tensor.exp(logstdevs_1_Da) # minimum stdev seems to make density / kl computations more stable
-        stdevs_B_Da = tensor.ones_like(means_B_Da)*stdevs_1_Da # "broadcast" to (B,Da)
+        if self.use_shared_std_network:
+            with nn.variable_scope('out1'):
+                mean_layer = nn.AffineLayer(net.output, net.output_shape, (self.action_space.dim,),
+                                            initializer=np.zeros((net.output_shape[0], self.action_space.dim)))
+                assert mean_layer.output_shape == (self.action_space.dim,)
+
+            with nn.variable_scope('out2'):
+                logstdev_layer = nn.AffineLayer(net.output, net.output_shape, (self.action_space.dim,),
+                                                initializer=np.zeros((net.output_shape[0], self.action_space.dim)))
+                assert logstdev_layer.output_shape == (self.action_space.dim,)
+
+            means_B_Da = mean_layer.output
+            stdevs_B_Da = tensor.exp(logstdev_layer.output)
+        else:
+            with nn.variable_scope('out1'):
+                mean_layer = nn.AffineLayer(net.output, net.output_shape, (self.action_space.dim,),
+                                            initializer=np.zeros((net.output_shape[0], self.action_space.dim)))
+                assert mean_layer.output_shape == (self.action_space.dim,)
+            means_B_Da = mean_layer.output
+            # Action distribution log standard deviations are parameters themselves
+            logstdevs_1_Da = nn.get_variable('logstdevs_1_Da', np.full((1, self.action_space.dim), self.cfg.init_logstdev), broadcastable=(True,False))
+            stdevs_1_Da = self.cfg.min_stdev + tensor.exp(logstdevs_1_Da) # minimum stdev seems to make density / kl computations more stable
+            stdevs_B_Da = tensor.ones_like(means_B_Da)*stdevs_1_Da # "broadcast" to (B,Da)
 
         actiondist_B_Pa = tensor.concatenate([means_B_Da, stdevs_B_Da], axis=1)
         return actiondist_B_Pa
@@ -167,7 +184,7 @@ class GaussianPolicy(Policy):
 
 GibbsPolicyConfig = namedtuple('GibbsPolicyConfig', 'hidden_spec, enable_obsnorm')
 class GibbsPolicy(Policy):
-    def __init__(self, cfg, obsfeat_space, action_space, varscope_name):
+    def __init__(self, cfg, obsfeat_space, action_space, varscope_name, use_shared_std_network):
         assert isinstance(cfg, GibbsPolicyConfig)
         assert isinstance(obsfeat_space, ContinuousSpace) and isinstance(action_space, FiniteSpace)
         self.cfg = cfg
@@ -177,7 +194,8 @@ class GibbsPolicy(Policy):
             action_space=action_space,
             num_actiondist_params=action_space.size,
             enable_obsnorm=cfg.enable_obsnorm,
-            varscope_name=varscope_name)
+            varscope_name=varscope_name,
+            use_shared_std_network=use_shared_std_network)
 
     def _make_actiondist_ops(self, obsfeat_B_Df):
         # Computes action distribution using MLP

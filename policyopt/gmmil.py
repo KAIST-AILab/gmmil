@@ -2,16 +2,18 @@ from . import nn, rl, util, RaggedArray, ContinuousSpace, FiniteSpace, optim, th
 import policyopt
 import numpy as np
 import theano.tensor as T
+from scipy.spatial.distance import cosine
 
 from contextlib import contextmanager
 import theano; from theano import tensor
 
 from scipy.optimize import fmin_l_bfgs_b
+import pickle
 
 class MMDReward(object):
     # This is just copy version of LinearReward
     # TODO-LIST : cost function equals to MMD witness function!!
-    # Consider only Gaussian Kernel first
+    # Consider only Gaussian Kernel (RBF Kernel)
     # TODO-1 : Determine bandwidth parameters
     # TODO-2 : Implement Radial Basis Kernel function
 
@@ -23,8 +25,11 @@ class MMDReward(object):
                  exobs_Bex_Do, exa_Bex_Da, ext_Bex,
                  kernel_bandwidth_params,
                  kernel_batchsize,
+                 kernel_reg_weight,
                  use_median_heuristic,
-                 use_logscale_reward
+                 use_logscale_reward,
+                 save_reward,
+                 epsilon
                  ):
 
         self.obsfeat_space, self.action_space = obsfeat_space, action_space
@@ -33,6 +38,8 @@ class MMDReward(object):
         self.time_scale = time_scale
         self.exobs_Bex_Do, self.exa_Bex_Da, self.ext_Bex = exobs_Bex_Do, exa_Bex_Da, ext_Bex
         self.use_logscale_reward = use_logscale_reward
+        self.save_reward = save_reward
+        self.epsilon = epsilon
 
         with nn.variable_scope('inputnorm'):
             # Standardize both observations and actions if actions are continuous
@@ -50,8 +57,16 @@ class MMDReward(object):
         # Arguments for MMD Reward
         self.kernel_bandwidth_params = kernel_bandwidth_params
         self.kernel_batchsize = kernel_batchsize
+        self.kernel_reg_weight = kernel_reg_weight
         self.use_median_heuristic = use_median_heuristic
         self.mmd_square = 1.
+
+        self.expert_sigmas = []
+        self.iteration = 0
+        self.YY = None
+
+        self.min_param = 100.0
+        self.max_param = 300.0
 
         # MMD reward function
         # - Use Radial Basis Function Kernel
@@ -66,19 +81,24 @@ class MMDReward(object):
         # We should normalize x, y w.r.t its dimension
         # since in large dimension, a small difference between x, y
         # makes large difference in total kernel function value.
-        dist_B = ((x/feat_dim)**2).sum(1).reshape((x.shape[0], 1)) \
-               + ((y/feat_dim)**2).sum(1).reshape((1, y.shape[0])) \
-               - 2*(x/feat_dim).dot((y/feat_dim).T)
+        normalized_x = x / feat_dim
+        normalized_y = y / feat_dim
+        dist_B = ((normalized_x)**2).sum(1).reshape((normalized_x.shape[0], 1)) \
+               + ((normalized_y)**2).sum(1).reshape((1, normalized_y.shape[0])) \
+               - 2*(normalized_x).dot((normalized_y).T)
 
-        rbf_kernel, _ = theano.scan(fn=lambda sigma, distance: T.exp(-sigma*distance),
+        rbf_kernel_sum, _ = theano.scan(fn=lambda sigma, distance: T.exp(-sigma*distance),
                                     outputs_info=None,
                                     sequences=sigmas, non_sequences=dist_B)
 
-        rbf_kernel_mean = rbf_kernel.mean(axis=0).mean(axis=0)
-        #rbf_kernel_mean_batchsum = rbf_kernel.mean(axis=0).mean(axis=0).sum()
+        rbf_kernel = rbf_kernel_sum.mean(axis=0)
+
+        if self.kernel_reg_weight > 0.0:
+            xynorm = T.outer(normalized_x.norm(2, axis=1), normalized_y.norm(2, axis=1))
+            rbf_kernel += self.kernel_reg_weight*((normalized_x).dot(normalized_y.T)) / xynorm
 
         self.kernel_function = theano.function([x, y, sigmas],
-                                               [rbf_kernel_mean],
+                                               [rbf_kernel],
                                                allow_input_downcast=True)
 
         # Evaluate k( expert, expert )
@@ -87,7 +107,6 @@ class MMDReward(object):
                                                           self.expert_feat_B_Df,
                                                           self.kernel_bandwidth_params)
             self.kernel_exex_total = np.mean(self.kernel_exex_total)
-
 
     def _featurize(self, obsfeat_B_Do, a_B_Da, t_B):
         assert self.inputnorm_updated
@@ -137,21 +156,40 @@ class MMDReward(object):
         return feat_B_Df
 
     def _get_median_bandwidth(self, feat_B_Df):
-        print "Calculating bandwitdh parameters..."
+        print "Calculating bandwidth parameters..."
         sigmas = []
 
         N = feat_B_Df.shape[0]
         M = self.expert_feat_B_Df.shape[0]
-        index = np.random.choice(N, M, replace=False)
+
+        index = np.random.choice(N, M, replace=(N < M))
+
         initial_points = feat_B_Df[index, :] / feat_B_Df.shape[1]
         expert_points = self.expert_feat_B_Df / feat_B_Df.shape[1]
 
+        # sigma_2 : median of pairwise squared-l2 distance among
+        #           data points from the expert policy
+        if len(self.expert_sigmas) == 0:
+            self.YY = np.multiply(expert_points, expert_points).sum(axis=1).reshape((1, -1))
+
+            dist_matrix = self.YY + (self.YY).T - 2 * np.matmul(expert_points, expert_points.T)
+            dist_array = np.absolute(np.asarray(dist_matrix).reshape(-1))
+            sigma_2 = 1. / np.median(dist_array)
+            self.expert_sigmas.append(sigma_2)
+
+            if self.use_median_heuristic == 2:
+                self.expert_sigmas.append(1. / np.percentile(dist_array, 25))
+                self.expert_sigmas.append(1. / np.percentile(dist_array, 75))
+
+        if self.use_median_heuristic < 4:
+            sigmas.extend(self.expert_sigmas)
+
         # sigma_1 : median of pairwise squared-l2 distance between
         #           data points from the expert policy and from initial policy
-        XX = np.multiply(initial_points, initial_points).sum(axis=1)
-        YY = np.multiply(expert_points, expert_points).sum(axis=1)
-        dist_matrix = XX + YY.T - 2 * np.matmul(initial_points, expert_points.T)
-        dist_array = np.asarray(dist_matrix).reshape(-1)
+        XX = np.multiply(initial_points, initial_points).sum(axis=1).reshape((1, -1))
+
+        dist_matrix = XX + (self.YY).T - 2 * np.matmul(initial_points, expert_points.T)
+        dist_array = np.absolute(np.asarray(dist_matrix).reshape(-1))
         sigma_1 = 1. / np.median(dist_array)
         sigmas.append(sigma_1)
 
@@ -161,25 +199,76 @@ class MMDReward(object):
             sigmas.append(1. / np.percentile(dist_array, 25))
             sigmas.append(1. / np.percentile(dist_array, 75))
 
-        # sigma_2 : median of pairwise squared-l2 distance among
-        #           data points from the expert policy
-        dist_matrix = YY + YY.T - 2 * np.matmul(expert_points, expert_points.T)
-        dist_array = np.asarray(dist_matrix).reshape(-1)
-        sigma_2 = 1. / np.median(dist_array)
-        sigmas.append(sigma_2)
-
-        if self.use_median_heuristic == 2:
-            sigmas.append(1. / np.percentile(dist_array, 25))
-            sigmas.append(1. / np.percentile(dist_array, 75))
-
         print "sigmas : ", sigmas
 
         return sigmas
 
+    # grid search for bandwidth parameter which maximizes MMD^2
+    def _get_bandwidth_with_parameter_search(self, feat_B_Df, min_value, max_value, grid_num):
+        print("Executing grid search for bandwidth parameter...")
+        params = np.linspace(min_value, max_value, grid_num)
+        max_param = 0
+        max_mmdsquare = 0
+
+        N = feat_B_Df.shape[0]
+        M = self.expert_feat_B_Df.shape[0]
+
+        batchsize = self.kernel_batchsize
+
+        total_index = range(len(feat_B_Df))
+        start_index = [index for index in total_index[0:len(feat_B_Df):batchsize]]
+        end_index = [index for index in total_index[batchsize:len(feat_B_Df):batchsize]]
+        end_index.append(len(feat_B_Df))
+        indices_list = [range(start, end) for (start, end) in zip(start_index, end_index)]
+
+        print('parameter,  mmd_square')
+        for param in params:
+            kernel_learned_total = 0
+            kernel_expert_total = 0
+            # kernel_exex_total = 0
+
+            for indices in indices_list:
+                kernel_learned = \
+                    self.kernel_function(feat_B_Df,
+                                         feat_B_Df[indices, :],
+                                         [param])
+
+                kernel_learned_total += np.sum(np.sum(kernel_learned, axis=0))
+
+                kernel_expert = \
+                    self.kernel_function(self.expert_feat_B_Df,
+                                         feat_B_Df[indices, :],
+                                         [param])
+                kernel_expert_total += np.sum(np.sum(kernel_expert, axis=0))
+
+            kernel_exex = \
+                self.kernel_function(self.expert_feat_B_Df,
+                                     self.expert_feat_B_Df,
+                                     [param])
+            kernel_exex_total = np.sum(np.sum(kernel_exex, axis=0))
+
+            mmd_square = kernel_learned_total / (N * N) - 2. * kernel_expert_total / (N * M) + kernel_exex_total / (M * M)
+
+            print(param, mmd_square)
+
+            if mmd_square > max_mmdsquare:
+                max_mmdsquare = mmd_square
+                max_param = param
+
+        return [max_param]
+
+
+
     def fit(self, obsfeat_B_Do, a_B_Da, t_B, _unused_exobs_Bex_Do, _unused_exa_Bex_Da, _unused_ext_Bex):
         # In MMD Reward, we don't need to do anything here
         # Return current mmd square value
-        return [('MMD^2*1000', self.mmd_square*1000, float)]
+        outputs = [('MMD^2', self.mmd_square, float)]
+
+        for i in range(len(self.kernel_bandwidth_params)):
+            output = (('sigma')+str(i+1), self.kernel_bandwidth_params[i], float)
+            outputs.append(output)
+
+        return outputs
 
     def compute_reward(self, obsfeat_B_Do, a_B_Da, t_B):
         # Features from Learned Policy Trajectory
@@ -187,15 +276,33 @@ class MMDReward(object):
         # Note thant features from expert trajectory : self.expert_feat_B_Df
         cost_B = np.zeros(feat_B_Df.shape[0])
 
-        if len(self.kernel_bandwidth_params) == 0:
-            self.kernel_bandwidth_params = self._get_median_bandwidth(feat_B_Df)
-            self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
-                                                             self.expert_feat_B_Df,
-                                                             self.kernel_bandwidth_params)
-            self.kernel_exex_total = np.mean(self.kernel_exex_total)
-
         N = feat_B_Df.shape[0]
         M = self.expert_feat_B_Df.shape[0]
+
+        if self.use_median_heuristic == 4 and self.iteration % 100 == 0:
+            self.kernel_bandwidth_params = \
+                self._get_bandwidth_with_parameter_search(
+                    feat_B_Df, self.min_param, self.max_param, 100)
+
+            self.min_param = max(self.kernel_bandwidth_params[0] - 100.0, 0.0)
+            self.max_param = min(self.kernel_bandwidth_params[0] + 100.0, 1000.0)
+
+            self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
+                                                          self.expert_feat_B_Df,
+                                                          self.kernel_bandwidth_params)
+            self.kernel_exex_total = np.sum(np.sum(self.kernel_exex_total, axis=0))
+            self.kernel_exex_total /= (M * M)
+
+        if len(self.kernel_bandwidth_params) == 0 or \
+           (self.use_median_heuristic == 3 and self.iteration % 50 == 0):
+
+            self.kernel_bandwidth_params = self._get_median_bandwidth(feat_B_Df)
+            self.kernel_exex_total = self.kernel_function(self.expert_feat_B_Df,
+                                                          self.expert_feat_B_Df,
+                                                          self.kernel_bandwidth_params)
+            self.kernel_exex_total = np.sum(np.sum(self.kernel_exex_total, axis=0))
+
+            self.kernel_exex_total /= (M * M)
 
         kernel_learned_total = 0
         kernel_expert_total = 0
@@ -213,26 +320,33 @@ class MMDReward(object):
                 self.kernel_function(feat_B_Df,
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
-            kernel_learned_total += np.sum(kernel_learned)
-            #kernel_learned_total += kernel_learned_sum
+
+            kernel_learned_total += np.sum(np.sum(kernel_learned, axis=0))
 
             kernel_expert = \
                 self.kernel_function(self.expert_feat_B_Df,
                                      feat_B_Df[indices, :],
                                      self.kernel_bandwidth_params)
-            #kernel_expert_total += kernel_expert_sum
-            kernel_expert_total += np.sum(kernel_expert)
+            kernel_expert_total += np.sum(np.sum(kernel_expert, axis=0))
 
-            cost_B[indices] = np.array(kernel_learned) - np.array(kernel_expert)
+            cost_B[indices] = np.mean(kernel_learned, axis=1) - np.mean(kernel_expert, axis=1)
 
-        self.mmd_square = kernel_learned_total/N - 2.* kernel_expert_total/N + self.kernel_exex_total
+        # Use unbiased estimator
+        # mmd_square = kernel_learned_total / (N * (N - 1)) - 2. * kernel_expert_total / (N * M) + self.kernel_exex_total
+        # Use biased estimator
+        mmd_square = kernel_learned_total / (N * N) - 2. * kernel_expert_total / (N * M) + self.kernel_exex_total
+
+        if mmd_square > 0:
+            self.mmd_square = mmd_square
+        else:
+            print "(Warning) Estimator for MMD^2 should be positive. Use previous MMD^2 value."
 
         cost_B /= np.sqrt(self.mmd_square)
         r_B = -cost_B
 
         reward_max = r_B.max()
         reward_min = r_B.min()
-        margin = (reward_max - reward_min) * 0.005
+        margin = (reward_max - reward_min) * self.epsilon #0.0001
 
         if self.favor_zero_expert_reward:
             # 0 for expert-like states, goes to -inf for non-expert-like states
@@ -258,6 +372,15 @@ class MMDReward(object):
             assert (reward_B >= 0).all()
 
         self.current_reward = reward_B
+
+        # Save imaginary rewards into pickle file
+        # if self.save_reward and self.iteration % 100 == 0:
+        #
+        #     with open('reward.pk', 'wb') as reward_f:
+        #         print("Save imaginary reward into pickle file...")
+        #         pickle.dump(self.current_reward, reward_f)
+
+        self.iteration += 1
 
         return reward_B
 
