@@ -1,4 +1,3 @@
-
 # Imitation Learning via Kernel Mean Embedding
 
 ## Kee-Eung Kim and Hyun Soo Park
@@ -21,3 +20,8 @@ Provided files:
 * ``scripts/im_pipeline.py`` is the main training and evaluation pipeline. This script is responsible for sampling data from experts to generate training data, running the training code (``scripts/imitate_mj.py``), and evaluating the resulting policies.
 * ``pipelines/*`` are the experiment specifications provided to ``scripts/im_pipeline.py``
 * ``results/*`` contain evaluation data for the learned policies
+
+Hyperparameters:
+
+You can set hyperparameters by passing arguments when you run this python script.
+For example, in order to run GMMIL, run `scripts/imitate_mj.py` python script as `python scripts/imitate_mj.py --mode gmmil --reward_type mmd --data EXPERT_TRAJ_PATH --env_name ENV_NAME`. Check the example shell file `train.sh`.
